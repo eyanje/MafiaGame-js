@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Mafia Server</title>
+        <meta charset="utf-8">
+        <style>
+            body {
+                background-color: #222222;
+                color: #bbbbbb;
+                font-family: Helvetica;
+            }
+            span.deadplayer {
+                margin: 1em;
+                padding: 0.2em;
+                color: white;
+                background-color: #880000;
+            }
+            button {
+                background-color: #aa00ff;
+                border-color: #aa00ff;
+                padding: 0.4em;
+            }
+        </style>
+        <script src="jquery.js"></script>
+        <script>
+            var players = [];
+            var loc = "";
+            function awaitData() {
+                var data;
+                $.ajax({
+                    url: "/getdata",
+                    success: (data1) => {
+                        data = data1;
+                    },
+                    statusCode: {
+                        200: () => {
+                            var startGame = data.startGame;
+                            if (startGame) {
+                                var startButton = document.getElementById("startbutton");
+                                if (startButton !== undefined && startButton !== null) {
+                                    startButton.outerHTML = "";
+                                }
+
+                                var locInput = document.getElementById("loc");
+                                if (loc.length == 0)
+                                {
+                                    loc = data.loc;
+                                }
+                                if (locInput !== undefined && locInput !== null) {
+                                    var locP = document.createElement("span");
+                                    locP.innerHTML = data.loc;
+                                    locInput.insertAdjacentElement('beforebegin', locP);
+                                    locInput.outerHTML = "";
+                                }
+
+                                var restartButton = document.getElementById("restartbutton");
+                                if (restartButton === undefined || restartButton === null) {
+                                    restartButton = document.createElement("button");
+                                    restartButton.id = "restartbutton";
+                                    restartButton.addEventListener('click', restart);
+                                    restartButton.innerHTML = "Restart";
+                                    document.body.insertAdjacentElement('beforeend', restartButton);
+                                }
+                            }
+
+                            var countTable = document.getElementById("counttable");
+                            for (var i = 0; i < countTable.children.length; ++i) {
+                                countTable.children[i].children[1].innerHTML = 0;
+                            }
+
+                            var aliveList = document.getElementById("aliveList");
+                            var deadList = document.getElementById("deadList");
+                            aliveList.innerHTML = "";
+                            deadList.innerHTML = "";
+                            var playerList = data.playerList;
+                            for (var i = 0; i < playerList.length; i++) {
+                                var player = playerList[i];
+                                if (player.alive) {
+
+                                    var button = document.createElement("button");
+                                    button.id = player.index;
+                                    button.innerHTML = player.index + ", " + player.name + ", " + player.role;
+                                    const tempIndex = player.index;
+                                    button.addEventListener("click", () => deletePlayer(tempIndex));
+                                    aliveList.insertAdjacentElement('beforeend', button);
+
+                                    switch (player.role) {
+                                        case "mafia":
+                                            ++countTable.children[0].children[1].innerHTML;
+                                            break;
+                                        case "doctor":
+                                            ++countTable.children[1].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                        case "detective":
+                                            ++countTable.children[2].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                        case "citizen":
+                                            ++countTable.children[3].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                    }
+                                } else {
+                                    var label = document.createElement("span");
+                                    label.className = "deadplayer";
+                                    label.innerHTML = player.index + ", " + player.name + ", " + player.role;
+                                    deadList.insertAdjacentElement('beforeend', label);
+                                }
+                            }
+                            if (data.playerList !== undefined)
+                                document.getElementById("nameCount").innerHTML = data.playerList.length;
+                        }
+                    }
+                });
+                setTimeout(awaitData, 300);
+            }
+            function startGame() {
+                loc = document.getElementById("loc").value;
+                if (loc.length) {
+                    var locP = document.createElement("span");
+                    locP.innerHTML = loc;
+                    document.getElementById("loc").insertAdjacentElement('beforebegin', locP);
+                    document.getElementById("loc").outerHTML = "";
+                    $.post("/startgame", loc);
+                    document.getElementById("startbutton").outerHTML = "";
+
+                    var restartButton = document.createElement("button");
+                    restartButton.id = "restartbutton";
+                    restartButton.addEventListener('click', restart);
+                    restartButton.innerHTML = "Restart";
+                    document.body.insertAdjacentElement('beforeend', restartButton);
+                } else {
+                    alert("You must provide a location!");
+                }
+            }
+            function deletePlayer(playerIndex) {
+                console.log(playerIndex)
+                const playerString = Number(playerIndex).toString()
+                var deleteSuccess = false;
+                while (!deleteSuccess) {
+                    $.post("/killplayer", playerString);
+
+                    deleteSuccess = true;
+                    $.get("/getdata",
+                        (data) => {
+                            var playerList = data.playerList;
+                            for (var i = 0; i < playerList.length; i++) {
+                                if (playerList[i].index == playerIndex && playerList[i].alive) {
+                                    deleteSuccess = false;
+                                }
+                            }
+                        }
+                    );
+                }
+            }
+            function restart() {
+                $.post("/restartgame");
+                loc = "";
+                $.get("/", (data) => {
+                    document.documentElement.innerHTML = data;
+                });
+                awaitData();
+            }
+        </script>
+    </head>
+    <body onload="awaitData()">
+        <h1>Mafia Server</h1>
+        <p>
+            We are in the lovely location of <input id="loc">!
+        </p>
+        <button onclick="startGame()" id="startbutton">Start Game</button>
+        <p>
+            Number alive:
+            <span id="nameCount">0</span>
+        </p>
+        <table>
+            <tbody id="counttable">
+                <tr><td>Mafia left</td><td>0</td></tr>
+                <tr><td>Doctors left</td><td>0</td></tr>
+                <tr><td>Detectives left</td><td>0</td></tr>
+                <tr><td>Regular citizens left</td><td>0</td></tr>
+                <tr><td>Non-mafia citizens left</td><td>0</td></tr>
+            </tbody>
+        </table>
+        <h2>Alive</h1>
+        <p>
+            Click on a button to kill a player manually. You might have to click a few times
+        </p>
+        <p id="aliveList"></p>
+        <h2>Dead</h2>
+        <p id="deadList"></p>
+    </body>
+</html>

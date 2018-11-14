@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Mafia</title>
+        <meta charset="utf-8">
+        <style>
+            body {
+                font-size: 1em;
+                font-family: Helvetica;
+                text-align: center;
+                background-color: #222222;
+                color: #888888;
+                margin: 0 auto;
+                max-width: 24em;
+            }
+            input, button {
+                font-size: 1em;
+                width: 100%;
+                height: 3em;
+                font-weight: bold;
+                text-align: center;
+                margin: 1em 0;
+            }
+            button {
+                background-color: #aa00ff;
+                border-color: #aa00ff;
+            }
+            button:active {
+                background-color: #fff4e6;
+            }
+            @media only screen and (max-width: 1000px) {
+                body {
+                    font-size: 1cm;
+                    text-align: center;
+                }
+                input, button {
+                    font-size: 1em;
+                    width: 100%;
+                    height: 4em;
+                    text-align: center;
+                    font-weight: bold;
+                    margin: 1em 0;
+                }
+            }
+        </style>
+        <script src="jquery.js"></script>
+        <script>
+            var playerIndex = -1;
+            var loc = "";
+            function submitName() {
+                var name = document.getElementById("nameEntry").value;
+                if (name.length) {
+                    $.post("/submitname",
+                        document.getElementById("nameEntry").value,
+                        (data) => {
+                            playerIndex = data;
+                        }
+                    );
+                    document.getElementById("nameEntryDiv").outerHTML = "";
+                    var waitP = document.createElement("p");
+                    waitP.id = "waitP";
+                    waitP.innerHTML = "Waiting";
+                    document.body.insertAdjacentElement("beforeend", waitP);
+
+                    var removeButton = document.createElement("button");
+                    removeButton.id = 'removebutton';
+                    removeButton.addEventListener('click', removeSelf);
+                    removeButton.innerHTML = "Remove me";
+                    document.body.insertAdjacentElement('beforeend', removeButton);
+
+                    setTimeout(waitForStart, 300);
+                } else {
+                    alert("You must provide a name!");
+                }
+            }
+            function removeSelf() {
+                $.post("/removeplayer", playerIndex);
+                playerIndex = -1;
+                document.getElementById('removebutton').outerHTML = '';
+            }
+            function killSelf() {
+                $.post("/killplayer", playerIndex);
+                document.getElementById('removebutton').outerHTML = '';
+            }
+            function waitForStart() {
+                var dataObj;
+                $.ajax({
+                    url: "/startgame",
+                    data: playerIndex,
+                    success: (data) => {
+                        dataObj = JSON.parse(data);
+                    },
+                    statusCode: {
+                        200: () => {
+                            if (dataObj.status == true) {
+                                loc = dataObj.loc;
+                                var locP = document.createElement("p");
+                                locP.innerHTML = "We are in the lovely location of " + loc + "!";
+
+                                var player = dataObj.player;
+
+                                var button = document.getElementById('removebutton');
+                                button.removeEventListener("click", removeSelf);
+                                button.addEventListener("click", killSelf);
+
+                                var roleP = document.getElementById("waitP");
+                                roleP.insertAdjacentElement('beforebegin', locP);
+                                
+                                roleP.innerHTML = "";
+                                roleP.id = "role";
+                                roleP.innerHTML = player.name + ", you are a ";
+                                if (!player.alive)
+                                    roleP.innerHTML += "dead ";
+                                roleP.innerHTML += player.role;
+
+                                var countTable = document.createElement("table");
+                                countTable.id = "counttable";
+                                for (var i = 0; i < 5; ++i) {
+                                    countTable.insertAdjacentElement('beforeend', document.createElement("tr"));
+                                    for (var j = 0; j < 2; ++j) {
+                                        countTable.lastElementChild.insertAdjacentElement('beforeend', document.createElement('td'));
+                                    }
+                                }
+                                countTable.children[0].children[0].innerHTML = "Mafia left";
+                                countTable.children[1].children[0].innerHTML = "Doctors left";
+                                countTable.children[2].children[0].innerHTML = "Detectives left";
+                                countTable.children[3].children[0].innerHTML = "Regular citizens left";
+                                countTable.children[4].children[0].innerHTML = "Non-mafia citizens left";  
+                                countTable.children[0].children[1].innerHTML = 0;
+                                countTable.children[1].children[1].innerHTML = 0;
+                                countTable.children[2].children[1].innerHTML = 0;
+                                countTable.children[3].children[1].innerHTML = 0;
+                                countTable.children[4].children[1].innerHTML = 0;
+                                button.insertAdjacentElement("beforebegin", countTable);
+
+                                var aliveLabel = document.createElement("h2");
+                                aliveLabel.innerHTML = "Who's alive";
+                                button.insertAdjacentElement("beforebegin", aliveLabel);
+
+                                var liveList = document.createElement("ul");
+                                liveList.id = "livelist";
+                                button.insertAdjacentElement("beforebegin", liveList);
+
+                                checkStatus();
+                            } else {
+                                setTimeout(waitForStart, 300);
+                            }
+                        }
+                    }
+                });
+            }
+            function checkStatus() {
+                var dataObj;
+                $.ajax({
+                    url: "/gamestatus", 
+                    success: (data) => {
+                        dataObj = JSON.parse(data);
+                    },
+                    statusCode: {
+                        200: () => {
+                            var players = dataObj.players;
+                            
+                            var player;
+                            var countTable = document.getElementById("counttable");
+                            var liveList = document.getElementById("livelist");
+                            liveList.innerHTML = "";
+                            
+                            for (var i = 0; i < 5; ++i) {
+                                countTable.children[i].children[1].innerHTML = 0;
+                            }
+                            for (var i = 0; i < players.length; ++i) {
+                                if (players[i].alive) {
+                                    switch (players[i].role) {
+                                        case "mafia":
+                                            ++countTable.children[0].children[1].innerHTML;
+                                            break;
+                                        case "doctor":
+                                            ++countTable.children[1].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                        case "detective":
+                                            ++countTable.children[2].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                        case "citizen":
+                                            ++countTable.children[3].children[1].innerHTML;
+                                            ++countTable.children[4].children[1].innerHTML;
+                                            break;
+                                    }
+                                }
+                                if (players[i].index == playerIndex) {
+                                    player = players[i];
+                                } else if (players[i].alive) {
+                                    var liveEntry = document.createElement('li');
+                                    liveEntry.innerHTML = players[i].name;
+                                    liveList.insertAdjacentElement('beforeend', liveEntry)
+                                }
+                            }
+                            var roleP = document.getElementById("role");
+                            if (player === undefined) {
+                                roleP.innerHTML = "You are a ghost!";
+                                playerIndex = -1;
+                                var button = document.getElementById('removebutton');
+                                if (button !== undefined && button !== null) {
+                                    button.outerHTML = "";
+                                }
+                            } else {
+                                var message = player.name + ", you are a ";
+                                if (!player.alive)
+                                    message += "dead ";
+                                message += player.role;
+                                if (roleP.innerHTML != message) {
+                                    roleP.innerHTML = message;
+                                }
+                            }
+                        }
+                    }
+                });
+                setTimeout(checkStatus, 300);
+            }
+        </script>
+    </head>
+    <body>
+        <h1>Mafia!</h1>
+        <div id="nameEntryDiv">
+            <h2>Name</h2>
+            <input type="text" name="playerName" id="nameEntry">
+            <button onclick="submitName()">Submit Name</button>
+            <p>Please use your real name, as it is how the non-gender-specific Deity will identify you.</p>
+            <p>If you decide to use a fake name, please tell everyone what it is.</p>
+        </div>
+    </body>
+</html>
